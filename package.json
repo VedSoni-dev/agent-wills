@@ -1,0 +1,14 @@
+{
+  "name": "agent-wills",
+  "version": "0.1.0",
+  "description": "When an agent dies, it leaves a will. The next one inherits it. Tiny will.md handoffs for Claude Code sessions and subagents.",
+  "license": "MIT",
+  "author": "Vedant Soni",
+  "homepage": "https://github.com/VedSoni-dev/agent-wills",
+  "repository": { "type": "git", "url": "git+https://github.com/VedSoni-dev/agent-wills.git" },
+  "bin": { "wills": "bin/wills.js", "agent-wills": "bin/wills.js" },
+  "files": ["bin", "src", "hooks", "commands", ".claude-plugin", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node --test test/" },
+  "keywords": ["claude-code", "claude-code-plugin", "agents", "subagents", "memory", "handoff", "hooks"]
+}

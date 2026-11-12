@@ -1,0 +1,14 @@
+{
+  "description": "Agent Wills: write a will when a session or subagent ends; hand the estate to the next session.",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/wills.js\" hook session-start", "timeout": 10 }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/wills.js\" hook session-end", "timeout": 15 }] }
+    ],
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/wills.js\" hook subagent-stop", "timeout": 10 }] }
+    ]
+  }
+}

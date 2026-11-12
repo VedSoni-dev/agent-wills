@@ -1,0 +1,14 @@
+{
+  "name": "agent-wills",
+  "owner": { "name": "Vedant Soni", "url": "https://github.com/VedSoni-dev" },
+  "plugins": [
+    {
+      "name": "agent-wills",
+      "source": "./",
+      "description": "When a session or subagent dies, it leaves a tiny will.md. The next agent in that folder inherits it.",
+      "version": "0.1.0",
+      "category": "productivity",
+      "homepage": "https://github.com/VedSoni-dev/agent-wills"
+    }
+  ]
+}

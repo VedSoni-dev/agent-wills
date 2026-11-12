@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+launch/
+.claude/wills/
+*.tmp
+.env*
+.vercel/
+site/.vercel/
+site/.env*

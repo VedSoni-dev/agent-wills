@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Wills</title>
+<meta name="description" content="When an agent dies, it leaves a will. The next one inherits it. A tiny open-source plugin for Claude Code.">
+<meta property="og:title" content="Agent Wills">
+<meta property="og:description" content="When an agent dies, it leaves a will. The next one inherits it.">
+<meta property="og:image" content="https://agent-wills.vercel.app/og.png">
+<meta property="og:url" content="https://agent-wills.vercel.app">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/icon.png">
+<style>
+:root {
+  --bg: #fdfcf9; --ink: #16161a; --ink-2: #55555c; --ink-3: #8c8c93; --line: rgba(20,20,30,.1);
+  --card: #ffffff; --code: #f4f2ec; --acc: #c98a1b; --acc-ink: #93600f; --acc-soft: rgba(201,138,27,.12);
+  --shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 20px 50px rgba(80,50,10,.10), 0 2px 8px rgba(80,50,10,.06);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+  --display: -apple-system, "SF Pro Display", system-ui, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111113; --ink: #f2f1ee; --ink-2: #b4b3ae; --ink-3: #85847f; --line: rgba(255,255,255,.1);
+    --card: #19191c; --code: #202024; --acc-ink: #e6a63a; --acc-soft: rgba(230,166,58,.12);
+    --shadow: 0 20px 50px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 var(--sans); }
+a { color: inherit; }
+.wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+.brand { display: flex; gap: 10px; align-items: center; font: 600 17px/1 var(--display); letter-spacing: -.01em; text-decoration: none; }
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.gh { font-size: 15px; color: var(--ink-2); text-decoration: none; border: 1px solid var(--line); padding: 7px 14px; border-radius: 999px; }
+.gh:hover { color: var(--ink); }
+.hero { text-align: center; padding: 64px 0 28px; }
+h1 { font: 600 clamp(38px, 6.4vw, 66px)/1.04 var(--display); letter-spacing: -.035em; margin: 0 auto; max-width: 13em; }
+h1 em { font-style: normal; color: var(--acc-ink); }
+.lede { color: var(--ink-2); font-size: clamp(17px, 2.2vw, 20px); max-width: 34em; margin: 22px auto 0; }
+.install { max-width: 640px; margin: 36px auto 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); text-align: left; overflow: hidden; }
+.tabs { display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid var(--line); }
+.tab { font: 500 14px/1 var(--sans); color: var(--ink-2); background: none; border: 0; padding: 9px 12px; border-radius: 8px; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--acc-soft); color: var(--acc-ink); }
+.panel { padding: 14px 16px 16px; }
+.panel[hidden] { display: none; }
+.cmd { display: flex; align-items: center; gap: 10px; font: 14.5px/1.4 var(--mono); padding: 8px 0; }
+.cmd code { flex: 1; overflow-x: auto; white-space: nowrap; }
+.cmd code::before { content: "$ "; color: var(--ink-3); }
+.cmd.cc code::before { content: ""; }
+.copy { flex: none; font: 500 13px/1 var(--sans); color: var(--ink-2); background: var(--code); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; cursor: pointer; }
+.copy:hover { color: var(--ink); }
+.note { color: var(--ink-3); font-size: 13.5px; margin: 6px 0 0; }
+.film { margin: 64px auto 0; border-radius: 18px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--line); background: #fff; aspect-ratio: 16 / 9; }
+.film video { display: block; width: 100%; height: 100%; }
+section { padding: 72px 0 0; }
+h2 { font: 600 clamp(26px, 3.6vw, 34px)/1.15 var(--display); letter-spacing: -.025em; margin: 0 0 10px; }
+.sub { color: var(--ink-2); margin: 0 0 26px; max-width: 38em; }
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.doc { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 22px 24px; font: 13.5px/1.6 var(--mono); overflow-x: auto; }
+.doc .t { font-weight: 700; }
+.doc .m { color: var(--ink-3); }
+.doc .e { border-left: 3px solid var(--acc); padding-left: 10px; margin: 10px 0 4px; color: var(--ink); }
+.doc .h { color: var(--acc-ink); font-weight: 600; margin-top: 12px; }
+.doc .b { padding-left: 1.2em; text-indent: -1.2em; }
+.doc .b::before { content: "- "; }
+.term { background: var(--code); border-radius: 16px; border: 1px solid var(--line); padding: 20px 22px; font: 13.5px/1.6 var(--mono); overflow-x: auto; white-space: pre-wrap; }
+.term .d { color: var(--ink-3); }
+.term .hl { background: var(--acc-soft); border-radius: 6px; display: block; padding: 2px 6px; margin: 2px -6px; }
+.cap { color: var(--ink-3); font-size: 14px; margin: 10px 2px 0; }
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.fact { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+.fact b { display: block; font: 600 19px/1.25 var(--display); letter-spacing: -.015em; margin-bottom: 6px; }
+.fact p { margin: 0; color: var(--ink-2); font-size: 15.5px; }
+table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--ink-3); font-weight: 500; font-size: 13.5px; }
+td code, p code, li code { font: 13.5px var(--mono); background: var(--code); padding: 1px 5px; border-radius: 5px; }
+footer { color: var(--ink-3); font-size: 14px; padding: 80px 0 48px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+footer a { color: var(--ink-2); }
+@media (max-width: 760px) {
+  .wrap { padding: 0 16px; }
+  .hero { padding-top: 40px; }
+  .duo, .facts { grid-template-columns: 1fr; }
+  .film { margin-top: 44px; border-radius: 12px; }
+  .cmd { align-items: flex-start; }
+  .cmd code { white-space: normal; word-break: break-all; font-size: 13.5px; }
+  th, td { padding: 10px 6px; font-size: 14.5px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/"><img src="/icon.png" alt="">Agent Wills</a>
+    <a class="gh" href="https://github.com/VedSoni-dev/agent-wills">GitHub</a>
+  </header>
+
+  <div class="hero">
+    <h1>When an agent dies, it leaves a <em>will.</em></h1>
+    <p class="lede">A tiny open-source plugin for Claude Code. When a session or subagent ends, it writes a few hundred tokens of <code>will.md</code>: what's done, what's unfinished, what to watch for. The next agent in that folder inherits it.</p>
+
+    <div class="install">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true" data-p="p1">Claude Code plugin</button>
+        <button class="tab" role="tab" aria-selected="false" data-p="p2">npm</button>
+      </div>
+      <div class="panel" id="p1">
+        <div class="cmd cc"><code>/plugin marketplace add VedSoni-dev/agent-wills</code><button class="copy">Copy</button></div>
+        <div class="cmd cc"><code>/plugin install agent-wills@agent-wills</code><button class="copy">Copy</button></div>
+        <p class="note">Type these in Claude Code, then restart it. Needs Node 18+.</p>
+      </div>
+      <div class="panel" id="p2" hidden>
+        <div class="cmd"><code>npm install -g github:VedSoni-dev/agent-wills</code><button class="copy">Copy</button></div>
+        <div class="cmd"><code>wills install</code><button class="copy">Copy</button></div>
+        <p class="note">Adds three hooks to ~/.claude/settings.json (with a backup) and the <code>wills</code> command. Needs Node 18+.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="film"><video src="/agent-wills.mp4" poster="/poster.jpg" controls playsinline preload="metadata" aria-label="Agent Wills launch film: a Claude Code session ends and leaves a will; the next session inherits it"></video></div>
+
+  <section>
+    <h2>A real will, and its heir</h2>
+    <p class="sub">First, the will a real session left when it ended. Then the session that started in the same folder a minute later.</p>
+    <div class="duo">
+      <div>
+        <div class="doc" aria-label="will.md">
+          <div class="t"># Will of afd03a · fix applycoupon negative total</div>
+          <div class="m">died 2026-11-12 15:06 · closed · 0 min · 1 prompt · main · written by claude</div>
+          <div class="e">I clamped applyCoupon so totals stop going negative, and node cart.test.js passes. FREESHIP was left for later, as asked.</div>
+          <div class="h">## Bequeathed</div>
+          <div class="b">`cart.js`: `applyCoupon` returns `Math.max(0, discounted)`, so the clamp covers every coupon</div>
+          <div class="b">`node cart.test.js` now prints `ok`</div>
+          <div class="h">## Unfinished business</div>
+          <div class="b">FREESHIP coupon (4.99 off when sum &gt; 50) not implemented in `cart.js`</div>
+          <div class="h">## Last wishes</div>
+          <div class="b">Add FREESHIP to `applyCoupon` in `cart.js`, gated on the sum being over 50</div>
+        </div>
+        <p class="cap">.claude/wills/2026-11-12-fix-applycoupon-negative-total-afd03a06e4.will.md · 594 bytes</p>
+      </div>
+      <div>
+<div class="term"><span class="d">$</span> claude
+<span class="hl"><span class="d">⎿ SessionStart:startup says:</span> 📜 Inherited 1 will. Latest: “I clamped applyCoupon so totals stop going negative, and node cart.test.js passes. FREESHI…”</span>
+&gt; where were we?
+
+⏺ We were fixing the negative-total bug in applyCoupon, and that part is done. The FREESHIP coupon is the open item.
+
+  Not done:
+  - FREESHIP (4.99 off when the sum is over 50) isn't in cart.js yet. The previous session left it for later at your request.</div>
+        <p class="cap">The heir also checked the will against the code before answering.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Small on purpose</h2>
+    <div class="facts">
+      <div class="fact"><b>Plain markdown</b><p>One file per death in <code>.claude/wills/</code>, git-ignored by default. No database, no background service, no dependencies.</p></div>
+      <div class="fact"><b>Exit is never held up</b><p>A plain will is written in milliseconds. The model rewrites it in the agent's voice in a detached process, after Claude Code has closed.</p></div>
+      <div class="fact"><b>Subagents too</b><p>Every subagent leaves a short will in <code>.claude/wills/subagents/</code>. Ask for one in the agent's own words with <code>/will</code>.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Who writes the will</h2>
+    <p class="sub">Secrets are redacted before anything is written or sent. If a model fails, the plain will stays.</p>
+    <table>
+      <thead><tr><th>Engine</th><th>What it uses</th><th>Picked when</th></tr></thead>
+      <tbody>
+        <tr><td><b>publik</b></td><td>The <a href="https://publikhq.com">publik API</a> (<code>publik-fast</code>). New accounts get free credit.</td><td>You have a publik key</td></tr>
+        <tr><td><b>claude</b></td><td>Your own Claude Code: <code>claude -p</code> with Haiku, no tools, nothing saved.</td><td><code>claude</code> is on your PATH</td></tr>
+        <tr><td><b>plain</b></td><td>No model. Files touched, last ask, last words, errors. Nothing leaves your machine.</td><td>Nothing else is set up</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    <span>Agent Wills is open source (MIT). Made by <a href="https://github.com/VedSoni-dev">Vedant Soni</a>.</span>
+    <a href="https://github.com/VedSoni-dev/agent-wills">github.com/VedSoni-dev/agent-wills</a>
+  </footer>
+</div>
+<script>
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach((x) => x.setAttribute('aria-selected', String(x === t)));
+  document.querySelectorAll('.panel').forEach((p) => (p.hidden = p.id !== t.dataset.p));
+}));
+document.querySelectorAll('.copy').forEach((b) => b.addEventListener('click', async () => {
+  const text = b.previousElementSibling.textContent;
+  try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; } catch { b.textContent = 'Select it'; }
+  setTimeout(() => (b.textContent = 'Copy'), 1400);
+}));
+</script>
+</body>
+</html>
