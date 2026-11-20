@@ -298,8 +298,13 @@ function settingsFile(project) {
   return project ? path.join(store.projectRoot(process.cwd()), '.claude', 'settings.local.json') : path.join(store.CLAUDE_DIR(), 'settings.json');
 }
 
+/** Our hook, wherever the app was copied to (AGENT_WILLS_HOME can put it in a folder with any name). */
 function isOurs(h) {
-  return h && typeof h.command === 'string' && /agent-wills/.test(h.command) && /wills\.js/.test(h.command);
+  return !!h && typeof h.command === 'string' && /wills\.js"? hook (session-start|session-end|subagent-stop)\b/.test(h.command);
+}
+
+function hasOurs(settings) {
+  return Object.values((settings && settings.hooks) || {}).some((groups) => Array.isArray(groups) && groups.some((g) => g && (g.hooks || []).some(isOurs)));
 }
 
 function stripOurs(settings) {
@@ -428,7 +433,7 @@ function cmdDoctor() {
   (major >= 18 ? ok : bad)(`node ${process.versions.node}${major >= 18 ? '' : ' (need 18+)'}`);
   const user = store.readJSON(settingsFile(false), {});
   const proj = store.readJSON(settingsFile(true), {});
-  const has = (s) => JSON.stringify(s.hooks || {}).includes('agent-wills');
+  const has = hasOurs;
   const sources = [];
   if (pluginInstalled()) sources.push('plugin');
   if (has(user)) sources.push('~/.claude/settings.json');
