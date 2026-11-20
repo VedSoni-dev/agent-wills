@@ -237,3 +237,124 @@ test('two background rewrites of one session leave exactly one will', async () =
     mock.close();
   }
 });
+
+test('a will the agent wrote itself survives a "thanks, bye", but not more work', async () => {
+  const p = project();
+  const env = { ...p.env, CLAUDE_CODE_SESSION_ID: 'abc123def456' };
+  await run(['self', '--transcript', p.transcript], { env, cwd: p.root, input: '> I wrote this myself.\n## Last wishes\n- ship it' });
+  const row = (type, sec, message) => JSON.stringify({ type, uuid: `z${sec}`, timestamp: new Date(Date.now() + sec * 1000).toISOString(), sessionId: 'abc123def456', cwd: p.root, message }) + '\n';
+  const end = () => run(['hook', 'session-end'], { env: p.env, input: JSON.stringify({ session_id: 'abc123def456', transcript_path: p.transcript, cwd: p.root }) });
+  const will = () => fs.readFileSync(path.join(p.wills, willsIn(p.wills)[0]), 'utf8');
+
+  fs.appendFileSync(p.transcript, row('user', 5, { role: 'user', content: 'thanks, bye' }));
+  await end();
+  assert.match(will(), /written by itself\n> I wrote this myself\./, 'a goodbye is not work');
+
+  fs.appendFileSync(p.transcript, row('assistant', 9, { content: [{ type: 'tool_use', id: 'late', name: 'Edit', input: { file_path: `${p.root}/src/late.ts` } }] }));
+  await end();
+  assert.match(will(), /written by plain\n/, 'a tool call after the will means the will is stale');
+  assert.match(will(), /src\/late\.ts/);
+  assert.strictEqual(willsIn(p.wills).length, 1);
+});
+
+test('a session that never said goodbye (crash, kill) is settled at the next start-up, once', async () => {
+  const p = project();
+  const dir = path.dirname(p.transcript);
+  const start = (extra = {}) => run(['hook', 'session-start'], { env: p.env, input: JSON.stringify({ session_id: 'next', transcript_path: path.join(dir, 'next.jsonl'), cwd: p.root, source: 'startup', ...extra }) });
+  fs.writeFileSync(path.join(dir, 'next.jsonl'), '');
+
+  assert.strictEqual((await start({ source: 'resume' })).out, '', 'a resumed session settles nothing');
+  const first = JSON.parse((await start()).out);
+  assert.match(first.systemMessage, /Inherited 1 will/);
+  assert.match(first.hookSpecificOutput.additionalContext, /Fix the login redirect loop/);
+  const [file] = willsIn(p.wills);
+  const text = fs.readFileSync(path.join(p.wills, file), 'utf8');
+  assert.match(text, /^# Will of abc123 /);
+  assert.match(text, / · no goodbye · /);
+  assert.ok(!willsIn(p.wills).some((f) => /next/.test(f)), 'the session that is starting is not dead');
+
+  const before = fs.statSync(path.join(p.wills, file)).mtimeMs;
+  await start();
+  assert.strictEqual(fs.statSync(path.join(p.wills, file)).mtimeMs, before, 'settled once, not on every start-up');
+
+  // it was alive after all: it talks again, then ends properly, and its own will replaces the settled one
+  fs.appendFileSync(p.transcript, JSON.stringify({ type: 'assistant', uuid: 'zz', timestamp: new Date().toISOString(), sessionId: 'abc123def456', cwd: p.root, message: { content: [{ type: 'text', text: 'Now the refresh race is fixed too.' }] } }) + '\n');
+  await run(['hook', 'session-end'], { env: p.env, input: JSON.stringify({ session_id: 'abc123def456', transcript_path: p.transcript, cwd: p.root, reason: 'prompt_input_exit' }) });
+  assert.deepStrictEqual(willsIn(p.wills), [file]);
+  assert.match(fs.readFileSync(path.join(p.wills, file), 'utf8'), / · exit · [\s\S]*refresh race is fixed too/);
+  await start();
+  assert.match(fs.readFileSync(path.join(p.wills, file), 'utf8'), / · exit · /, 'a session that ended properly is left alone');
+});
+
+test('a session still open in another window gets a plain will only: no model call', async () => {
+  const p = project();
+  const mock = await mockPublik(() => ({ status: 200, json: { choices: [{ message: { content: 'title: x y z\n> I finished the job and left nothing open.' } }] } }));
+  try {
+    const env = { ...p.env, WILLS_ENGINE: 'publik', PUBLIK_API_KEY: 'pk_test_x', PUBLIK_API_BASE_URL: mock.url };
+    const dir = path.dirname(p.transcript);
+    const input = JSON.stringify({ session_id: 'next', transcript_path: path.join(dir, 'next.jsonl'), cwd: p.root, source: 'startup' });
+    await run(['hook', 'session-start'], { env, input });
+    assert.strictEqual(willsIn(p.wills).length, 1);
+    await new Promise((r) => setTimeout(r, 1200));
+    assert.strictEqual(mock.calls.length, 0, 'touched seconds ago: may be alive, so no model call');
+
+    // a transcript nobody has touched for ten minutes is dead: the model writes its will in the background
+    const old = new Date(Date.now() - 10 * 60000);
+    fs.utimesSync(p.transcript, old, old);
+    fs.rmSync(p.wills, { recursive: true });
+    await run(['hook', 'session-start'], { env, input });
+    assert.ok(await waitFor(() => mock.calls.length === 1), 'one model call for the dead session');
+    assert.ok(await waitFor(() => willsIn(p.wills).some((f) => /x-y-z/.test(f))));
+  } finally {
+    mock.close();
+  }
+});
+
+test('with no git, the will goes where the session started, not where the agent cd\'d', async () => {
+  const root = fs.realpathSync(tmp('nogit-'));
+  const home = tmp('home-');
+  const env = { AGENT_WILLS_HOME: path.join(home, '.agent-wills'), HOME: home, PUBLIK_API_KEY: '', WILLS_ENGINE: 'plain' };
+  fs.mkdirSync(path.join(root, 'sub'));
+  const tx = fakeTranscript(tmp('tx-'), { root });
+  await run(['hook', 'session-end'], { env, input: JSON.stringify({ session_id: 'abc123def456', transcript_path: tx, cwd: path.join(root, 'sub'), reason: 'other' }) });
+  assert.strictEqual(willsIn(path.join(root, '.claude', 'wills')).length, 1);
+  assert.ok(!fs.existsSync(path.join(root, 'sub', '.claude')));
+  const self = await run(['self', '--transcript', tx], { env: { ...env, CLAUDE_CODE_SESSION_ID: 'ffff00001111' }, cwd: path.join(root, 'sub'), input: '## Bequeathed\n- `a.js` done' });
+  assert.strictEqual(self.code, 0, self.err);
+  const mine = willsIn(path.join(root, '.claude', 'wills')).find((f) => /ffff000011/.test(f));
+  assert.ok(mine, '/will from a subfolder lands in the start folder too');
+  const text = fs.readFileSync(path.join(root, '.claude', 'wills', mine), 'utf8');
+  assert.match(text, /\n> I fixed the redirect loop in src\/auth\.ts\.\n\n## Bequeathed\n- `a\.js` done/, 'a will with no epitaph keeps its first heading');
+  assert.strictEqual((await run(['self', '--transcript', tx, '--title'], { env, cwd: root, input: '> hi, this is my will' })).code, 0, '--title with no value must not crash');
+});
+
+test('CLAUDE_CONFIG_DIR is honoured: install, uninstall and transcripts', async () => {
+  const p = project();
+  const cdir = path.join(p.home, 'elsewhere');
+  fs.mkdirSync(cdir);
+  const env = { ...p.env, CLAUDE_CONFIG_DIR: cdir };
+  assert.strictEqual((await run(['install'], { env, cwd: p.root })).code, 0);
+  assert.ok(JSON.parse(fs.readFileSync(path.join(cdir, 'settings.json'), 'utf8')).hooks.SessionEnd);
+  assert.ok(fs.existsSync(path.join(cdir, 'commands', 'will.md')));
+  assert.ok(!fs.existsSync(path.join(p.home, '.claude')), 'nothing may be written to the default folder');
+  const tdir = path.join(cdir, 'projects', fs.realpathSync(p.root).replace(/[^a-zA-Z0-9]/g, '-'));
+  fs.mkdirSync(tdir, { recursive: true });
+  fakeTranscript(tdir, { root: p.root });
+  fs.mkdirSync(path.join(p.root, 'src'));
+  const w = await run(['write'], { env, cwd: path.join(fs.realpathSync(p.root), 'src') });
+  assert.strictEqual(w.code, 0, w.err);
+  assert.strictEqual(willsIn(p.wills).length, 1, '`wills write` finds the transcript from a subfolder');
+  assert.strictEqual((await run(['uninstall'], { env, cwd: p.root })).code, 0);
+  assert.ok(!fs.existsSync(path.join(cdir, 'commands', 'will.md')));
+});
+
+test('the publik call leaves room for a model that thinks first', async () => {
+  const p = project();
+  const mock = await mockPublik(() => ({ status: 200, json: { choices: [{ message: { content: 'title: x y z\n> I finished the job and left nothing open.' } }] } }));
+  try {
+    await run(['write', '--transcript', p.transcript, '--engine', 'publik'], { env: { ...p.env, PUBLIK_API_KEY: 'pk_test_x', PUBLIK_API_BASE_URL: mock.url }, cwd: p.root });
+    assert.ok(mock.calls[0].body.max_tokens >= 2048);
+  } finally {
+    mock.close();
+  }
+});

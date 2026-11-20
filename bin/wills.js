@@ -6,10 +6,10 @@ const os = require('os');
 const path = require('path');
 const store = require('../src/store');
 const { loadWills, buildEstate, ago } = require('../src/estate');
-const { onDeath, runJob, prepare, writePlain, refine } = require('../src/scribe');
+const { onDeath, runJob, prepare, writePlain, refine, settleIntestate } = require('../src/scribe');
 const { resolveEngine, publikKey, onPath } = require('../src/engines');
-const { header, cap, parseWill } = require('../src/will');
-const { readTranscript } = require('../src/transcript');
+const { header, cap, firstSentence } = require('../src/will');
+const { readTranscript, shorten } = require('../src/transcript');
 const { redact } = require('../src/redact');
 
 const VERSION = require('../package.json').version;
@@ -101,6 +101,15 @@ function sessionStart(input) {
   if (scripted() && !cfg.scripted) return;
   if (input.source === 'resume') return;
   const cwd = input.cwd || process.cwd();
+  if (!input.source || input.source === 'startup') {
+    try {
+      for (const r of settleIntestate({ transcript: input.transcript_path, sessionId: input.session_id, cwd, cfg })) {
+        hookLog(`session-start settled ${r.id}, which never said goodbye → ${r.file} (${r.engine})`);
+      }
+    } catch (e) {
+      hookLog(`settling failed: ${e.stack || e.message}`);
+    }
+  }
   const estate = buildEstate(store.willsDir(cwd, cfg), { cwd });
   const err = store.lastError();
   const out = {};
@@ -244,13 +253,17 @@ function cmdSelf(args) {
     info.endedAt = new Date().toISOString();
   }
   body = body.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').replace(/^#\s*(last\s+)?will[^\n]*\n+/i, '').trim();
-  if (!body.startsWith('>')) body = `> ${body.split('\n')[0]}\n${body.split('\n').slice(1).join('\n')}`.trim();
+  // the Bash tool may have cd'd since the session began: the will belongs where the session started
   const cwd = process.cwd();
-  const dir = store.willsDir(cwd, cfg);
-  const root = store.projectRoot(cwd);
+  const dir = store.willsDir(cwd, cfg, info.cwd);
+  const root = store.projectRoot(cwd, info.cwd);
+  // no epitaph: a will that opens on a section keeps the section and gets a line from its last words
+  if (/^#/.test(body)) body = `> ${firstSentence(shorten(info.finalWords, root)) || 'I left no epitaph.'}\n\n${body}`;
+  else if (!body.startsWith('>')) body = `> ${body.split('\n')[0]}\n${body.split('\n').slice(1).join('\n')}`.trim();
   const firstAsk = info.prompts.find((p) => !/^\/(agent-wills:)?will\b/.test(p.text));
   const meta = { id: sid || info.sessionId || require('crypto').randomUUID(), reason: 'manual', engine: 'itself', root, maxChars: Math.max(cfg.maxChars, 1800) };
-  meta.title = argFlag(args, '--title') || (firstAsk ? firstAsk.text : 'a session').replace(/\s+/g, ' ').slice(0, 60);
+  const titleFlag = argFlag(args, '--title');
+  meta.title = (typeof titleFlag === 'string' ? titleFlag : firstAsk ? firstAsk.text : 'a session').replace(/\s+/g, ' ').slice(0, 60);
   const file = store.willPathFor(dir, { id: meta.id, title: meta.title, subagent: false });
   store.ensureWillsDir(dir);
   const text = cap(redact(`${header(info, meta)}\n${body}`) + '\n', meta.maxChars);
@@ -260,7 +273,7 @@ function cmdSelf(args) {
 }
 
 function findTranscript(id) {
-  const base = path.join(os.homedir(), '.claude', 'projects');
+  const base = path.join(store.CLAUDE_DIR(), 'projects');
   try {
     for (const d of fs.readdirSync(base)) {
       const f = path.join(base, d, `${id}.jsonl`);
@@ -282,7 +295,7 @@ const EVENTS = [
 
 /** --project goes to settings.local.json: the hook path is personal (it names your home folder), so it must not be committed. */
 function settingsFile(project) {
-  return project ? path.join(store.projectRoot(process.cwd()), '.claude', 'settings.local.json') : path.join(os.homedir(), '.claude', 'settings.json');
+  return project ? path.join(store.projectRoot(process.cwd()), '.claude', 'settings.local.json') : path.join(store.CLAUDE_DIR(), 'settings.json');
 }
 
 function isOurs(h) {
@@ -325,7 +338,7 @@ function copyApp() {
 }
 
 function pluginInstalled() {
-  const j = store.readJSON(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), null);
+  const j = store.readJSON(path.join(store.CLAUDE_DIR(), 'plugins', 'installed_plugins.json'), null);
   return !!(j && JSON.stringify(j).includes('agent-wills'));
 }
 
@@ -359,7 +372,7 @@ function cmdInstall(args) {
   store.writeAtomic(file, JSON.stringify(settings, null, 2) + '\n');
 
   if (!project) {
-    const cmdDir = path.join(os.homedir(), '.claude', 'commands');
+    const cmdDir = path.join(store.CLAUDE_DIR(), 'commands');
     fs.mkdirSync(cmdDir, { recursive: true });
     const tpl = fs.readFileSync(path.join(app, 'commands', 'will.md'), 'utf8').split('${CLAUDE_PLUGIN_ROOT}').join(app);
     const dest = path.join(cmdDir, 'will.md');
@@ -391,7 +404,7 @@ function cmdUninstall(args) {
   }
   const n = stripOurs(settings);
   store.writeAtomic(file, JSON.stringify(settings, null, 2) + '\n');
-  const cmd = path.join(os.homedir(), '.claude', 'commands', 'will.md');
+  const cmd = path.join(store.CLAUDE_DIR(), 'commands', 'will.md');
   if (!project && fs.existsSync(cmd) && fs.readFileSync(cmd, 'utf8').includes('agent-wills')) fs.unlinkSync(cmd);
   console.log(`${green('✓')} removed ${n} hook${n === 1 ? '' : 's'} from ${prettyPath(file)}. Your wills stay where they are.`);
 }

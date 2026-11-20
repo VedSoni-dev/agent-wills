@@ -5,6 +5,8 @@ const os = require('os');
 const path = require('path');
 
 const HOME_DIR = () => process.env.AGENT_WILLS_HOME || path.join(os.homedir(), '.agent-wills');
+/** Claude Code's own folder: ~/.claude unless CLAUDE_CONFIG_DIR moves it. */
+const CLAUDE_DIR = () => process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 
 const DEFAULTS = {
   engine: 'auto', // auto | publik | claude | byo | plain
@@ -106,24 +108,38 @@ function saveConfig(patch) {
   return { ...DEFAULTS, ...next };
 }
 
-/** The folder a will belongs to: the git root above cwd, else cwd itself. */
-function projectRoot(cwd) {
+function gitRoot(cwd) {
   let dir = path.resolve(cwd || process.cwd());
   for (;;) {
     if (fs.existsSync(path.join(dir, '.git'))) return dir;
     const up = path.dirname(dir);
-    if (up === dir) return path.resolve(cwd || process.cwd());
+    if (up === dir) return null;
     dir = up;
   }
+}
+
+/**
+ * The folder a will belongs to: the git root above cwd. With no git, the folder the session
+ * started in (an agent that ran `cd src` must not leave its will in src/), else cwd itself.
+ */
+function projectRoot(cwd, startCwd) {
+  const here = path.resolve(cwd || process.cwd());
+  const git = gitRoot(here);
+  if (git) return git;
+  if (startCwd) {
+    const start = path.resolve(startCwd);
+    if (here === start || here.startsWith(start + path.sep)) return start;
+  }
+  return here;
 }
 
 function slugPath(p) {
   return String(p).replace(/[^a-zA-Z0-9]/g, '-');
 }
 
-function willsDir(cwd, cfg = loadConfig()) {
+function willsDir(cwd, cfg = loadConfig(), startCwd) {
   if (process.env.WILLS_DIR) return path.resolve(process.env.WILLS_DIR);
-  const root = projectRoot(cwd);
+  const root = projectRoot(cwd, startCwd);
   if (cfg.location === 'home') return path.join(HOME_DIR(), 'estates', slugPath(root));
   return path.join(root, '.claude', 'wills');
 }
@@ -208,23 +224,36 @@ function listWillFiles(dir) {
 
 /** Where Claude Code keeps this folder's transcripts. */
 function transcriptsDir(cwd) {
-  return path.join(os.homedir(), '.claude', 'projects', slugPath(path.resolve(cwd || process.cwd())));
+  return path.join(CLAUDE_DIR(), 'projects', slugPath(path.resolve(cwd || process.cwd())));
 }
 
-function latestTranscript(cwd) {
-  const dir = transcriptsDir(cwd);
-  let best = null;
+/** Every session transcript in a folder, newest first. */
+function transcriptsIn(dir) {
+  const out = [];
   try {
     for (const n of fs.readdirSync(dir)) {
       if (!n.endsWith('.jsonl')) continue;
       const f = path.join(dir, n);
-      const t = fs.statSync(f).mtimeMs;
-      if (!best || t > best.t) best = { f, t };
+      const st = fs.statSync(f);
+      if (st.isFile()) out.push({ file: f, id: n.slice(0, -6), mtime: st.mtimeMs, size: st.size });
     }
   } catch {
-    return null;
+    /* no transcripts here */
   }
-  return best && best.f;
+  return out.sort((a, b) => b.mtime - a.mtime);
+}
+
+/** The newest transcript for this folder; from a subfolder, the nearest folder above that has one (up to the repo root). */
+function latestTranscript(cwd) {
+  let dir = path.resolve(cwd || process.cwd());
+  const top = projectRoot(dir);
+  for (;;) {
+    const found = transcriptsIn(transcriptsDir(dir))[0];
+    if (found) return found.file;
+    const up = path.dirname(dir);
+    if (dir === top || up === dir) return null;
+    dir = up;
+  }
 }
 
 function logError(kind, message, extra = {}) {
@@ -252,6 +281,9 @@ function lastError() {
 
 module.exports = {
   HOME_DIR,
+  CLAUDE_DIR,
+  gitRoot,
+  transcriptsIn,
   DEFAULTS,
   loadConfig,
   saveConfig,

@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('path');
-const { clip, minutesBetween, rel, shorten } = require('./transcript');
+const { clip, clipEnds, minutesBetween, rel, shorten } = require('./transcript');
 const { redact } = require('./redact');
 
 /*
@@ -33,6 +33,7 @@ const CAUSES = {
   other: 'closed',
   subagent: 'task done',
   manual: 'by hand',
+  intestate: 'no goodbye',
 };
 
 function causeOf(reason) {
@@ -107,7 +108,7 @@ function plainWill(info, meta = {}) {
   const last = meta.subagent ? null : info.prompts[info.prompts.length - 1];
   if (last && info.prompts.length > 1) out.push('', '## Last asked', `- ${clip(last.text, 220)}`);
   if (info.finalWords && info.finalWords.length > epitaph.length + 10) {
-    out.push('', '## Last words', `- ${clip(info.finalWords, 420)}`);
+    out.push('', '## Last words', `- ${clipEnds(info.finalWords, 420)}`);
   }
   const errs = info.errors.slice(-3);
   if (errs.length) {

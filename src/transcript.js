@@ -13,6 +13,14 @@ function clip(s, n) {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s;
 }
 
+/** Long text keeps its start and its end: an agent's last message usually closes on what is left. */
+function clipEnds(s, n, tail = Math.round(n * 0.4)) {
+  s = String(s || '').replace(/\s+/g, ' ').trim();
+  if (s.length <= n) return s;
+  const end = s.slice(-tail).replace(/^\S*\s+/, '');
+  return `${clip(s, n - end.length - 1)} ${end}`;
+}
+
 // What a human actually typed, minus harness noise. Slash commands become "/name args".
 function cleanPrompt(text) {
   let s = String(text || '').replace(REMINDER_RE, '');
@@ -75,6 +83,7 @@ function readTranscript(file, opts = {}) {
     commands: [],
     errors: [],
     toolCalls: 0,
+    lastToolAt: null,
     entrypoint: null,
     activeMs: 0,
   };
@@ -155,6 +164,7 @@ function readTranscript(file, opts = {}) {
         }
       } else if (c.type === 'tool_use') {
         info.toolCalls++;
+        if (o.timestamp) info.lastToolAt = o.timestamp;
         const name = c.name || 'tool';
         const input = c.input || {};
         const summary = toolSummary(name, input);
@@ -253,4 +263,4 @@ function digest(info, meta = {}) {
   return out;
 }
 
-module.exports = { readTranscript, digest, isTrivial, cleanPrompt, clip, minutesBetween, rel, shorten };
+module.exports = { readTranscript, digest, isTrivial, cleanPrompt, clip, clipEnds, minutesBetween, rel, shorten };

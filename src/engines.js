@@ -59,7 +59,9 @@ async function chatCompletion({ base, key, model, user, timeoutMs = 60000 }) {
       body: JSON.stringify({
         model,
         temperature: 0.3,
-        max_tokens: 700,
+        // a will is ~300 tokens, but publik tiers can be backed by reasoning models that think first:
+        // too small a budget comes back empty
+        max_tokens: 2048,
         messages: [
           { role: 'system', content: SYSTEM },
           { role: 'user', content: user },
