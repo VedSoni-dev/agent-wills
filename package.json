@@ -1,6 +1,6 @@
 {
   "name": "agent-wills",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "When an agent dies, it leaves a will. The next one inherits it. Tiny will.md handoffs for Claude Code sessions and subagents.",
   "license": "MIT",
   "author": "Vedant Soni",

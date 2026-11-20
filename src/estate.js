@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseWill } = require('./will');
 const { listWillFiles, projectRoot } = require('./store');
-const { clip } = require('./transcript');
+const { clip, clipEnds } = require('./transcript');
 
 function loadWills(dir) {
   const wills = [];
@@ -71,6 +71,14 @@ function buildEstate(dir, { maxChars = 2000, now = Date.now(), cwd } = {}) {
       if (knew) lines.push(`  Knew: ${knew.slice(0, 2).join('; ')}`);
       const next = pick(w, 'Last wishes');
       if (next) lines.push(`  Last wishes: ${next.slice(0, 2).join('; ')}`);
+      // a plain will (no model, or the model has not finished yet, as right after /clear) has none of
+      // those sections: hand over the files it touched and the agent's own last words instead
+      if (!unfinished && !warn && !knew && !next) {
+        const touched = pick(w, 'Bequeathed');
+        if (touched) lines.push(`  Touched: ${clip(touched.slice(0, 5).join(', '), 240)}`);
+        const words = pick(w, 'Last words');
+        if (words) lines.push(`  Last words: ${clipEnds(words.join(' '), 320)}`);
+      }
     } else if (unfinished) {
       lines.push(`  Unfinished: ${clip(unfinished.join('; '), 180)}`);
     }
@@ -81,7 +89,8 @@ function buildEstate(dir, { maxChars = 2000, now = Date.now(), cwd } = {}) {
     lines.push(`+ ${subs.length} subagent will${subs.length === 1 ? '' : 's'} in ${shown}/subagents/ (latest: ${clip(recent, 160)})`);
   }
 
-  let text = lines.join('\n');
+  // nothing a will says may close the block early and pose as something outside it
+  let text = lines[0] + '\n' + lines.slice(1).join('\n').replace(/<\s*\/?\s*agent-wills[^>]*>/gi, '[tag removed]');
   if (text.length > maxChars - 16) text = text.slice(0, maxChars - 17).replace(/\n[^\n]*$/, '') + '\n…';
   text += '\n</agent-wills>';
   return { text, count: n, subagents: subs.length, latest: main[0] || subs[0] };

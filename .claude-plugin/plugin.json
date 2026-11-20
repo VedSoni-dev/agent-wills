@@ -1,6 +1,6 @@
 {
   "name": "agent-wills",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "When a session or subagent dies, it leaves a tiny will.md. The next agent in that folder inherits it.",
   "author": { "name": "Vedant Soni", "url": "https://github.com/VedSoni-dev" },
   "homepage": "https://github.com/VedSoni-dev/agent-wills",

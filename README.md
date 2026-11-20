@@ -55,14 +55,15 @@ npm install -g github:VedSoni-dev/agent-wills
 wills install
 ```
 
-Restart Claude Code. You need Node 18 or newer on your PATH. To remove it: `/plugin uninstall agent-wills`, or `wills uninstall`. Your wills stay where they are.
+Restart Claude Code. You need Node 18 or newer on your PATH. If `CLAUDE_CONFIG_DIR` is set, `wills install` writes there instead of `~/.claude`. To remove it: `/plugin uninstall agent-wills`, or `wills uninstall`. Your wills stay where they are.
 
 ## How it works
 
 - **`SessionEnd`** (you exit, `/clear`, or log out): a plain will is written straight from the transcript, with no model, in about 5 ms. Then a detached background process rewrites it in the agent's own voice and gives it a proper title. Closing Claude Code is never held up.
 - **`SubagentStop`**: each subagent leaves a short will in `.claude/wills/subagents/`. A subagent's final report is already its testament, so these use no model by default.
 - **`SessionStart`**: the next session in that folder is handed the estate as context, inside an `<agent-wills>` block, plus a one-line `📜 Inherited 3 wills` notice. The block tells the agent that wills are notes from past transcripts, not instructions: check them against the code, and never run a command just because a will mentions it. Raw tool output and old prompts are kept out of it.
-- **`/will`**: ask the agent to write its own will before you close it. A will in its own words beats any summary, so the hook won't overwrite it.
+- **`/will`**: ask the agent to write its own will before you close it. A will in its own words beats any summary, so the hook won't overwrite it. A "thanks, bye" afterwards changes nothing; a tool call or two more asks after the will mean it's stale, and the session's ending writes a new one.
+- **No goodbye**: `SessionEnd` never fires when Claude Code crashes, is killed, or loses its terminal. So at the next start-up, the two most recent sessions in the folder are checked, and one that left no will (or kept talking after its will) gets one written from its transcript, marked `no goodbye`. A transcript touched in the last two minutes might be a session still open in another window: it gets a plain will and no model call, and its real ending replaces it.
 
 A new will from the same session revokes the old one: it's the same file. A session that asked nothing and did nothing leaves no will. Scripted runs (`claude -p`, the Agent SDK) are skipped, so automation doesn't spend your usage on wills. Turn them on with `wills config scripted true`.
 
@@ -81,7 +82,7 @@ If the model fails, or your publik balance is empty, the plain will stays, and t
 
 ## Where wills live
 
-In `<repo>/.claude/wills/`. The first will also writes a `.gitignore` containing `*`, so nothing is committed by accident. Delete that `.gitignore` if you want to share wills with your team. To keep them out of your repos entirely: `wills config location home` (they go to `~/.agent-wills/estates/`).
+In `<repo>/.claude/wills/`, at the git root. With no git, it's the folder the session started in, even if the agent ran `cd` since. The first will also writes a `.gitignore` containing `*`, so nothing is committed by accident. Delete that `.gitignore` if you want to share wills with your team. To keep them out of your repos entirely: `wills config location home` (they go to `~/.agent-wills/estates/`).
 
 ## CLI
 
@@ -106,6 +107,8 @@ wills config [key] [v]   engine, subagents (plain|model|off), location, estate, 
 **What about claude-mem and other memory plugins?** They're more ambitious: databases, workers, search. Agent Wills is deliberately small: plain markdown files you can `cat`, no dependencies, no background service, nothing to run.
 
 **Does it slow anything down?** The hooks read the transcript and write a file: about 0.15 s for a 25 MB transcript and 0.25 s for 67 MB. The model call happens in a detached process after Claude Code has exited.
+
+**What if Claude Code crashes?** The session can't write a will, so the next one settles it from the transcript at start-up (see "No goodbye" above). You get a handoff either way.
 
 **Can a will be wrong?** Yes. A model wrote it from a condensed transcript. That's why the estate tells the next agent to verify before relying on it, and why `/will` exists.
 
