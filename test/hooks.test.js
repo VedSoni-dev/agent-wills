@@ -358,3 +358,14 @@ test('the publik call leaves room for a model that thinks first', async () => {
     mock.close();
   }
 });
+
+test('with the app in a custom home folder, doctor sees the hooks and uninstall removes them', async () => {
+  const p = project();
+  const env = { ...p.env, AGENT_WILLS_HOME: path.join(p.home, 'elsewhere') };
+  for (let i = 0; i < 2; i++) assert.strictEqual((await run(['install'], { env, cwd: p.root })).code, 0);
+  const settings = path.join(p.home, '.claude', 'settings.json');
+  assert.strictEqual(JSON.parse(fs.readFileSync(settings, 'utf8')).hooks.SessionEnd.length, 1, 'installing twice must not double the hooks');
+  assert.match((await run(['doctor'], { env, cwd: p.root })).out, /✓ hooks: ~\/\.claude\/settings\.json/);
+  assert.match((await run(['uninstall'], { env, cwd: p.root })).out, /removed 3 hooks/);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(settings, 'utf8')), {});
+});
